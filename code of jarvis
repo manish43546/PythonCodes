@@ -1,0 +1,323 @@
+import datetime
+import os
+import random
+import subprocess
+import webbrowser
+from urllib.parse import quote_plus
+
+import pyttsx3
+import speech_recognition as sr
+
+try:
+    import wikipedia
+except ImportError:
+    wikipedia = None
+
+NAME = "jarvis"
+
+# ---------------- WEBSITES ----------------
+WEBSITES = {
+    "youtube": "https://www.youtube.com",
+    "google": "https://www.google.com",
+    "gmail": "https://mail.google.com",
+    "facebook": "https://www.facebook.com",
+    "instagram": "https://www.instagram.com",
+    "twitter": "https://www.twitter.com",
+    "linkedin": "https://www.linkedin.com",
+    "whatsapp": "https://web.whatsapp.com",
+    "github": "https://www.github.com",
+    "stackoverflow": "https://stackoverflow.com",
+    "amazon": "https://www.amazon.in",
+    "flipkart": "https://www.flipkart.com",
+    "chatgpt": "https://chatgpt.com",
+    "claude": "https://claude.ai",
+    "maps": "https://maps.google.com",
+    "netflix": "https://www.netflix.com",
+    "leetcode": "https://leetcode.com",
+    "spotify": "https://open.spotify.com",
+    "drive": "https://drive.google.com",
+}
+
+# ---------------- APPS (name -> (command, process name for closing)) ----------------
+BRAVE_PATHS = [
+    r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+    r"C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\Application\brave.exe"),
+]
+
+APPS = {
+    "chrome": ("start chrome", "chrome.exe"),
+    "google chrome": ("start chrome", "chrome.exe"),
+    "edge": ("start msedge", "msedge.exe"),
+    "microsoft edge": ("start msedge", "msedge.exe"),
+    "firefox": ("start firefox", "firefox.exe"),
+    "notepad": ("start notepad", "notepad.exe"),
+    "calculator": ("start calc", "CalculatorApp.exe"),
+    "paint": ("start mspaint", "mspaint.exe"),
+    "command prompt": ("start cmd", "cmd.exe"),
+    "cmd": ("start cmd", "cmd.exe"),
+    "powershell": ("start powershell", "powershell.exe"),
+    "file explorer": ("start explorer", None),
+    "explorer": ("start explorer", None),
+    "task manager": ("start taskmgr", "Taskmgr.exe"),
+    "settings": ("start ms-settings:", None),
+    "control panel": ("start control", None),
+    "word": ("start winword", "WINWORD.EXE"),
+    "excel": ("start excel", "EXCEL.EXE"),
+    "powerpoint": ("start powerpnt", "POWERPNT.EXE"),
+    "vs code": ("start code", "Code.exe"),
+    "visual studio code": ("start code", "Code.exe"),
+    "code": ("start code", "Code.exe"),
+}
+
+FILLER_WORDS = [
+    "please", "jarvis", "can you", "could you", "for me", "kholo", "khol do",
+    "kar do", "karo", "chalao", "laga do", "the", "app", "application", "website",
+]
+
+JOKES = [
+    "Why do programmers prefer dark mode? Because light attracts bugs.",
+    "Why did the developer go broke? Because he used up all his cache.",
+    "There are 10 types of people. Those who understand binary and those who don't.",
+    "A SQL query walks into a bar, walks up to two tables and asks, can I join you?",
+]
+
+# ---------------- VOICE OUTPUT ----------------
+def speak(text):
+    print("Jarvis:", text)
+    try:
+        engine = pyttsx3.init()
+        engine.setProperty("rate", 175)
+        voices = engine.getProperty("voices")
+        if voices:
+            engine.setProperty("voice", voices[0].id)
+        engine.say(text)
+        engine.runAndWait()
+        engine.stop()
+    except Exception as e:
+        print("(voice output error:", e, ")")
+
+
+# ---------------- VOICE INPUT ----------------
+recognizer = sr.Recognizer()
+recognizer.dynamic_energy_threshold = True
+recognizer.energy_threshold = 300
+recognizer.pause_threshold = 0.9
+
+
+def listen():
+    try:
+        with sr.Microphone() as source:
+            print("\nListening...")
+            recognizer.adjust_for_ambient_noise(source, duration=0.8)
+            try:
+                audio = recognizer.listen(source, timeout=8, phrase_time_limit=8)
+            except sr.WaitTimeoutError:
+                return ""
+    except OSError as e:
+        print("Microphone error:", e)
+        return ""
+
+    try:
+        print("Recognizing...")
+        query = recognizer.recognize_google(audio, language="en-IN")
+        print("You said:", query)
+        return query.lower().strip()
+    except sr.UnknownValueError:
+        print("Samajh nahi aaya, dobara bolo.")
+        return ""
+    except sr.RequestError:
+        speak("Internet connection check karo.")
+        return ""
+
+
+# ---------------- HELPERS ----------------
+def clean(query):
+    for w in FILLER_WORDS:
+        query = query.replace(w, " ")
+    return " ".join(query.split())
+
+
+def run(cmd):
+    subprocess.Popen(cmd, shell=True)
+
+
+def open_brave():
+    for p in BRAVE_PATHS:
+        if os.path.exists(p):
+            subprocess.Popen([p])
+            return True
+    return False
+
+
+def open_target(name):
+    name = clean(name)
+    if not name:
+        speak("Kya kholna hai?")
+        return
+
+    if "brave" in name:
+        if open_brave():
+            speak("Opening Brave browser")
+        else:
+            speak("Brave browser mujhe nahi mila")
+        return
+
+    if name in APPS:
+        run(APPS[name][0])
+        speak(f"Opening {name}")
+        return
+
+    if name in WEBSITES:
+        webbrowser.open(WEBSITES[name])
+        speak(f"Opening {name}")
+        return
+
+    # unknown name: try as a website
+    site = name.replace(" ", "")
+    webbrowser.open(f"https://www.{site}.com")
+    speak(f"Trying to open {name} website")
+
+
+def close_target(name):
+    name = clean(name)
+    if "brave" in name:
+        proc = "brave.exe"
+    elif name in APPS and APPS[name][1]:
+        proc = APPS[name][1]
+    elif name in ("youtube", "website", "tab"):
+        speak("Browser tab main nahi band kar sakta, browser band karne ko bolo.")
+        return
+    else:
+        speak("Ye app band karna mujhe nahi aata.")
+        return
+    run(f"taskkill /f /im {proc}")
+    speak(f"Closing {name}")
+
+
+def greet():
+    hour = datetime.datetime.now().hour
+    if hour < 12:
+        g = "Good morning"
+    elif hour < 17:
+        g = "Good afternoon"
+    else:
+        g = "Good evening"
+    speak(f"{g}! I am Jarvis, your personal assistant. How can I help you?")
+
+
+# ---------------- COMMAND HANDLER ----------------
+def handle(query):
+    # exit
+    if any(w in query for w in ["exit", "quit", "stop jarvis", "goodbye", "bye bye", "band ho ja"]):
+        speak("Goodbye! Have a nice day.")
+        return False
+
+    # time
+    if "time" in query or "samay" in query:
+        speak("The time is " + datetime.datetime.now().strftime("%I:%M %p"))
+        return True
+
+    # date
+    if "date" in query or "today" in query or "aaj" in query:
+        speak("Today is " + datetime.datetime.now().strftime("%A, %d %B %Y"))
+        return True
+
+    # play song / video on youtube
+    if query.startswith("play "):
+        song = query.replace("play", "", 1).replace("on youtube", "").strip()
+        speak(f"Playing {song} on YouTube")
+        webbrowser.open("https://www.youtube.com/results?search_query=" + quote_plus(song))
+        return True
+
+    # youtube search
+    if query.startswith("search youtube for") or query.startswith("youtube search"):
+        term = query.replace("search youtube for", "").replace("youtube search", "").strip()
+        speak(f"Searching YouTube for {term}")
+        webbrowser.open("https://www.youtube.com/results?search_query=" + quote_plus(term))
+        return True
+
+    # google search
+    if query.startswith("search ") or query.startswith("google "):
+        term = query.replace("search for", "").replace("search", "", 1).replace("google", "", 1).strip()
+        speak(f"Searching Google for {term}")
+        webbrowser.open("https://www.google.com/search?q=" + quote_plus(term))
+        return True
+
+    # open
+    if query.startswith("open ") or query.startswith("launch ") or query.startswith("start "):
+        target = query.split(" ", 1)[1]
+        open_target(target)
+        return True
+    if query.endswith(" kholo") or query.endswith(" khol do") or query.endswith(" open karo"):
+        open_target(query)
+        return True
+
+    # close
+    if query.startswith("close ") or query.startswith("band karo "):
+        close_target(query.split(" ", 1)[1])
+        return True
+
+    # wikipedia
+    for trigger in ("tell me about", "who is", "what is", "who was"):
+        if query.startswith(trigger):
+            topic = query.replace(trigger, "", 1).strip()
+            if wikipedia is None:
+                speak("Wikipedia module install nahi hai.")
+                return True
+            try:
+                speak("Searching Wikipedia")
+                result = wikipedia.summary(topic, sentences=2)
+                speak(result)
+            except Exception:
+                speak(f"Mujhe {topic} ke baare me kuch nahi mila. Google pe search kar raha hoon.")
+                webbrowser.open("https://www.google.com/search?q=" + quote_plus(topic))
+            return True
+
+    # fun
+    if "joke" in query:
+        speak(random.choice(JOKES))
+        return True
+    if "how are you" in query:
+        speak("I am doing great. Thank you for asking!")
+        return True
+    if "your name" in query or "who are you" in query:
+        speak("I am Jarvis, your voice assistant.")
+        return True
+    if "hello" in query or query in ("hi", "hey"):
+        speak("Hello! How can I help you?")
+        return True
+
+    # system
+    if "shutdown" in query:
+        speak("Shutting down the computer in 10 seconds. Say cancel shutdown to stop.")
+        run("shutdown /s /t 10")
+        return True
+    if "cancel shutdown" in query:
+        run("shutdown /a")
+        speak("Shutdown cancelled")
+        return True
+    if "restart" in query:
+        speak("Restarting in 10 seconds.")
+        run("shutdown /r /t 10")
+        return True
+    if "lock" in query and "computer" in query:
+        run("rundll32.exe user32.dll,LockWorkStation")
+        return True
+
+    speak("Mujhe ye command samajh nahi aayi. Dobara bolo.")
+    return True
+
+
+def main():
+    greet()
+    while True:
+        query = listen()
+        if not query:
+            continue
+        if not handle(query):
+            break
+
+
+if __name__ == "__main__":
+    main()
